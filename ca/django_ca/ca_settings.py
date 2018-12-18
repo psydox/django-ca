@@ -23,6 +23,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.utils.translation import ugettext_lazy as _
 
 CA_DIR = getattr(settings, 'CA_DIR', os.path.join(settings.BASE_DIR, 'files'))
+CA_BASE_DIR = getattr(settings, 'CA_BASE_DIR', 'django_ca/keys')
 CA_DEFAULT_KEY_SIZE = getattr(settings, 'CA_DEFAULT_KEY_SIZE', 4096)
 
 CA_PROFILES = {

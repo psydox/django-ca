@@ -65,6 +65,11 @@ from .utils import int_to_hex
 from .utils import multiline_url_validator
 
 
+def get_private_key_path(instance, filename):
+    print('get private key path')
+    return '%s/%s' % (ca_settings.CA_BASE_DIR, filename)
+
+
 class Watcher(models.Model):
     name = models.CharField(max_length=64, null=True, blank=True, verbose_name=_('CommonName'))
     mail = models.EmailField(verbose_name=_('E-Mail'), unique=True)
@@ -475,7 +480,8 @@ class CertificateAuthority(X509CertMixin):
     enabled = models.BooleanField(default=True)
     parent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True,
                                related_name='children')
-    private_key_path = models.FileField(upload_to=ca_settings.CA_DIR, help_text=_('Path to the private key.'))
+    private_key_path = models.CharField(max_length=256, help_text=_('Path to the private key.'))
+    private_key = models.FileField(upload_to=get_private_key_path, help_text=_('Path to the private key.'))
 
     # various details used when signing certs
     crl_url = models.TextField(blank=True, null=True, validators=[multiline_url_validator],
@@ -492,7 +498,7 @@ class CertificateAuthority(X509CertMixin):
 
     def key(self, password):
         if self._key is None:
-            with default_storage.open(self.private_key_path, 'rb') as f:
+            with default_storage.open(self.private_key, 'rb') as f:
                 key_data = f.read()
 
             self._key = load_pem_private_key(key_data, password, default_backend())
