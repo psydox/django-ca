@@ -2,10 +2,22 @@
 ``django_ca.models`` - django-ca models
 #######################################
 
-Note that both :py:class:`~django_ca.models.CertificateAuthority` and
-:py:class:`~django_ca.models.Certificate` inherit from
-:py:class:`~django_ca.models.X509CertMixin`, which provides many convenience
-methods.
+**django-ca** uses three classes, called "models" in Django terminology, to
+store everything in the database. They are the core classes for this project, if
+you want to use this project programatically, you'll have to use these classes:
+
+* :ref:`CertificateAuthority <models-certificate-authority>` is used to store
+  certificate authorities.
+* :ref:`Certificate <models-certificate>` is used to store certificates.
+* Finally, :ref:`Watcher <models-watcher>` stores email addresses for who should
+  be notified if certificates expire.
+
+
+Note that both ``CertificateAuthority`` and ``Certificate`` inherit from
+:py:class:`~django_ca.models.X509CertMixin`, which provides many common
+convenience methods.
+
+.. _models-certificate-authority:
 
 ********************
 CertificateAuthority
@@ -15,19 +27,71 @@ CertificateAuthority
    :members:
    :exclude-members: DoesNotExist, MultipleObjectsReturned
 
-Manager methods
-===============
+Creating CAs
+============
 
-:py:class:`~django_ca.managers.CertificateAuthorityManager` is the default manager for
-:py:class:`~django_ca.models.CertificateAuthority`, meaning you can access it
-using ``CertificateAuthority.objects``, e.g.::
+Use ``CertificateAuthority.objects.init()`` to create new certificate
+authorities. The method has many options but is designed to provide defaults
+that work in most cases::
 
    >>> from django_ca.models import CertificateAuthority
-   >>> CertificateAuthority.objects.init(...)
+   >>> ca = CertificateAuthority.objects.init(
+   ...   name='ca', subject='/CN=ca.example.com',
+   ...   pathlen=1  # so we can create one level of intermediate CAs
+   ... )
+   >>> ca
+   <CertificateAuthority: ca>
 
-.. autoclass:: django_ca.managers.CertificateAuthorityManager
-   :members:
+This CA will contain all properties and X509 extensions to be a fully
+functioning CA. To create an intermediate CA, simply pass the parent::
 
+   >>> child = CertificateAuthority.objects.init(
+   ...   name='child', subject='/CN=child.example.com',
+   ...   parent=ca)
+   >>> child.parent
+   <CertificateAuthority: ca>
+   >>> ca.children.all()
+   <CertificateAuthorityQuerySet [<CertificateAuthority: child>]>
+
+Or to create a CA with all extensions that live CAs have, you can pass many more
+parameters::
+
+   >>> full = CertificateAuthority.objects.init(
+   ...   name='child', subject='/CN=full.example.com',
+   ...   parent=ca,  # some extensions are only valid for intermediate CAs
+   ...   issuer_url='http://full.example.com/full.der',
+   ...   # this CA can only sign for *.com domains:
+   ...   name_constraints=['permitted,.com'],  
+   ...
+   ...   # CRL/OCSP URLs for signed certificates. These can be changed later:
+   ...   crl_url=['http://full.example.com/full.crl', ],
+   ...   ocsp_url='http://full.example.com/ocsp',
+   ...
+   ...   # CRL/OCSP/Issuer URLs for the CA. These are only meaningful for
+   ...   # intermediate CAs:
+   ...   ca_crl_url=['http://parent.example.com/parent.crl', ],
+   ...   ca_ocsp_url='http://parent.example.com/ocsp',
+   ...   ca_issuer_url='http://parent.example.com/parent.crt'
+   ... )
+
+There are some more parameters to configure how the CA will be signed::
+
+   >>> CertificateAuthority.objects.init(
+   ...   name='props', subject='/CN=child.example.com',
+   ...   algorithm='SHA256',  # sha512 would be the default
+   ...   pathlen=3,  # three levels of intermediate CAs allowed,
+   ...   password=b'foobar',  # encrypt private key with this password
+   ...   key_size=4096,  # key size for RSA keys - unused in this example
+   ...   key_type='ECC',  # create an ECC private key
+   ...   ecc_curve='SECP256R1'
+   ... )
+   <CertificateAuthority: props>
+
+Here are all parameters for creating CAs:
+
+.. automethod:: django_ca.managers.CertificateAuthorityManager.init
+
+.. _models-certificate:
 
 ***********
 Certificate
@@ -45,7 +109,8 @@ Manager methods
 using ``Certificate.objects``, e.g.::
 
    >>> from django_ca.models import Certificate
-   >>> Certificate.objects.init(...)
+   >>> Certificate.objects.init(csr=csr, ca=ca, subject='/CN=example.com')
+   <Certificate: example.com>
 
 .. autoclass:: django_ca.managers.CertificateManager
    :members:
@@ -60,4 +125,13 @@ X509CertMixin
 attributes.
 
 .. autoclass:: django_ca.models.X509CertMixin
+   :members:
+
+.. _models-watcher:
+
+********
+Watchers
+********
+
+.. autoclass:: django_ca.models.Watcher
    :members:

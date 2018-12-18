@@ -7,10 +7,10 @@
 # License, or (at your option) any later version.
 #
 # django-ca is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
-# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 # General Public License for more details.
 #
-# You should have received a copy of the GNU General Public License along with django-ca.  If not,
+# You should have received a copy of the GNU General Public License along with django-ca. If not,
 # see <http://www.gnu.org/licenses/>.
 
 import os
@@ -34,7 +34,10 @@ from django.utils.encoding import force_bytes
 from django.utils.encoding import force_text
 
 from . import ca_settings
+from .extensions import ExtendedKeyUsage
 from .extensions import IssuerAlternativeName
+from .extensions import KeyUsage
+from .extensions import TLSFeature
 from .signals import post_create_ca
 from .signals import post_issue_cert
 from .signals import pre_create_ca
@@ -74,7 +77,7 @@ class CertificateManagerMixin(object):
 
 class CertificateAuthorityManager(CertificateManagerMixin, models.Manager):
     def init(self, name, subject, expires=None, algorithm=None, parent=None, pathlen=None,
-             issuer_url=None, issuer_alt_name=None, crl_url=None, ocsp_url=None,
+             issuer_url=None, issuer_alt_name='', crl_url=None, ocsp_url=None,
              ca_issuer_url=None, ca_crl_url=None, ca_ocsp_url=None, name_constraints=None,
              password=None, parent_password=None, ecc_curve=None, key_type='RSA', key_size=None):
         """Create a new certificate authority.
@@ -84,14 +87,16 @@ class CertificateAuthorityManager(CertificateManagerMixin, models.Manager):
 
         name : str
             The name of the CA. This is a human-readable string and is used for administrative purposes only.
-        subject : :py:class:`~django_ca.subject.Subject`
-            Subject string, e.g. ``Subject("/CN=example.com")``.
+        subject : dict or str or :py:class:`~django_ca.subject.Subject`
+            Subject string, e.g. ``"/CN=example.com"`` or ``Subject("/CN=example.com")``. The value is
+            actually passed to :py:class:`~django_ca.subject.Subject` if it is not already an instance of that
+            class.
         expires : datetime, optional
             Datetime for when this certificate authority will expire, defaults to
             :ref:`CA_DEFAULT_EXPIRES <settings-ca-default-expires>`.
         algorithm : str or :py:class:`~cg:cryptography.hazmat.primitives.hashes.HashAlgorithm`, optional
             Hash algorithm used when signing the certificate, passed to
-            :py:func:`~django_ca.utils.parse_hash_algorithm`.  The default is the value of the
+            :py:func:`~django_ca.utils.parse_hash_algorithm`. The default is the value of the
             :ref:`CA_DIGEST_ALGORITHM <settings-ca-digest-algorithm>` setting.
         parent : :py:class:`~django_ca.models.CertificateAuthority`, optional
             Parent certificate authority for the new CA. Passing this value makes the CA an intermediate
@@ -101,8 +106,10 @@ class CertificateAuthorityManager(CertificateManagerMixin, models.Manager):
             extension.
         issuer_url : str
             URL for the DER/ASN1 formatted certificate that is signing certificates.
-        issuer_alt_name : str, optional
-            IssuerAlternativeName used when signing certificates. This currently has to be a URL.
+        issuer_alt_name : :py:class:`~django_ca.extensions.IssuerAlternativeName` or str, optional
+            IssuerAlternativeName used when signing certificates. If the value is not an instance of
+            :py:class:`~django_ca.extensions.IssuerAlternativeName`, it will be passed as argument to
+            the constructor of the class.
         crl_url : list of str, optional
             CRL URLs used for certificates signed by this CA.
         ocsp_url : str, optional
@@ -126,8 +133,8 @@ class CertificateAuthorityManager(CertificateManagerMixin, models.Manager):
             The type of private key to generate, must be one of ``"RSA"``, ``"DSA"`` or ``"ECC"``, with
             ``"RSA"`` being the default.
         key_size : int, optional
-            Integer specifying the key size, must be a power of two (e.g. 2048, 4096, ...) unused if
-            ``key_type="ECC"`` but required otherwise.
+            Integer specifying the key size, must be a power of two (e.g. 2048, 4096, ...). Defaults to
+            the :ref:`CA_DEFAULT_KEY_SIZE <settings-ca-default-key-size>`, unused if ``key_type="ECC"``.
 
         Raises
         ------
@@ -140,6 +147,9 @@ class CertificateAuthorityManager(CertificateManagerMixin, models.Manager):
         # NOTE: Already verified by KeySizeAction, so these checks are only for when the Python API is used
         #       directly.
         if key_type != 'ECC':
+            if key_size is None:
+                key_size = ca_settings.CA_DEFAULT_KEY_SIZE
+
             if not is_power2(key_size):
                 raise ValueError("%s: Key size must be a power of two" % key_size)
             elif key_size < ca_settings.CA_MIN_KEY_SIZE:
@@ -147,6 +157,12 @@ class CertificateAuthorityManager(CertificateManagerMixin, models.Manager):
                     key_size, ca_settings.CA_MIN_KEY_SIZE))
 
         algorithm = parse_hash_algorithm(algorithm)
+
+        # Normalize extensions to django_ca.extensions.Extension subclasses
+        if not isinstance(subject, Subject):
+            subject = Subject(subject)
+        if not isinstance(issuer_alt_name, IssuerAlternativeName):
+            issuer_alt_name = IssuerAlternativeName(issuer_alt_name)
 
         pre_create_ca.send(
             sender=self.model, name=name, key_size=key_size, key_type=key_type, algorithm=algorithm,
@@ -213,8 +229,10 @@ class CertificateAuthorityManager(CertificateManagerMixin, models.Manager):
         certificate = builder.sign(private_key=private_sign_key, algorithm=algorithm,
                                    backend=default_backend())
 
+        # Normalize extensions for create()
         if crl_url is not None:
             crl_url = '\n'.join(crl_url)
+        issuer_alt_name = issuer_alt_name.serialize()
 
         ca = self.model(name=name, issuer_url=issuer_url, issuer_alt_name=issuer_alt_name,
                         ocsp_url=ocsp_url, crl_url=crl_url, parent=parent)
@@ -259,11 +277,13 @@ class CertificateManager(CertificateManagerMixin, models.Manager):
             Datetime for when this certificate will expire, defaults to the ``CA_DEFAULT_EXPIRES`` setting.
         algorithm : str or :py:class:`~cg:cryptography.hazmat.primitives.hashes.HashAlgorithm`, optional
             Hash algorithm used when signing the certificate, passed to
-            :py:func:`~django_ca.utils.parse_hash_algorithm`.  The default is the value of the
+            :py:func:`~django_ca.utils.parse_hash_algorithm`. The default is the value of the
             :ref:`CA_DIGEST_ALGORITHM <settings-ca-digest-algorithm>` setting.
-        subject : :py:class:`~django_ca.subject.Subject`, optional
-            The Subject to use in the certificate. If this value is not passed or if the value does not
-            contain a CommonName, the first value of the ``subjectAltName`` parameter is used as CommonName.
+        subject : dict or str or :py:class:`~django_ca.subject.Subject`
+            Subject string, e.g. ``"/CN=example.com"`` or ``Subject("/CN=example.com")``.
+            The value is actually passed to :py:class:`~django_ca.subject.Subject` if it is not already an
+            instance of that class. If this value is not passed or if the value does not contain a CommonName,
+            the first value of the ``subjectAltName`` parameter is used as CommonName.
         cn_in_san : bool, optional
             Wether the CommonName should also be included as subjectAlternativeName. The default is
             ``True``, but the parameter is ignored if no CommonName is given. This is typically set
@@ -275,12 +295,15 @@ class CertificateManager(CertificateManagerMixin, models.Manager):
             A list of values for the subjectAltName extension. Values are passed to
             :py:func:`~django_ca.utils.parse_general_name`, see function documentation for how this value is
             parsed.
-        key_usage : :py:class:`~django_ca.extensions.KeyUsage`, optional
-            Value for the ``keyUsage`` X509 extension.
-        extended_key_usage : :py:class:`~django_ca.extensions.ExtendedKeyUsage`, optional
-            Value for the ``extendedKeyUsage`` X509 extension.
-        tls_feature : :py:class:`~django_ca.extensions.TLSFeature`, optional
-            Value for the ``TLSFeature`` X509 extension.
+        key_usage : str or dict or :py:class:`~django_ca.extensions.KeyUsage`, optional
+            Value for the ``keyUsage`` X509 extension. The value is passed to
+            :py:class:`~django_ca.extensions.KeyUsage` if not already an instance of that class.
+        extended_key_usage : str or dict or :py:class:`~django_ca.extensions.ExtendedKeyUsage`, optional
+            Value for the ``extendedKeyUsage`` X509 extension. The value is passed to
+            :py:class:`~django_ca.extensions.ExtendedKeyUsage` if not already an instance of that class.
+        tls_feature : str or dict or :py:class:`~django_ca.extensions.TLSFeature`, optional
+            Value for the ``TLSFeature`` X509 extension. The value is passed to
+            :py:class:`~django_ca.extensions.TLSFeature` if not already an instance of that class.
         password : bytes, optional
             Password used to load the private key of the certificate authority. If not passed, the private key
             is assumed to be unencrypted.
@@ -292,12 +315,22 @@ class CertificateManager(CertificateManagerMixin, models.Manager):
             The signed certificate.
         """
         if subject is None:
-            subject = Subject()
+            subject = Subject()  # we need a subject instance so we can possibly add the CN
+        elif not isinstance(subject, Subject):
+            subject = Subject(subject)
 
         if 'CN' not in subject and not subjectAltName:
             raise ValueError("Must name at least a CN or a subjectAltName.")
 
         algorithm = parse_hash_algorithm(algorithm)
+
+        # Normalize extensions to django_ca.extensions.Extension subclasses
+        if key_usage and not isinstance(key_usage, KeyUsage):
+            key_usage = KeyUsage(key_usage)
+        if extended_key_usage and not isinstance(extended_key_usage, ExtendedKeyUsage):
+            extended_key_usage = ExtendedKeyUsage(extended_key_usage)
+        if tls_feature and not isinstance(tls_feature, TLSFeature):
+            tls_feature = TLSFeature(tls_feature)
 
         if subjectAltName:
             subjectAltName = [parse_general_name(san) for san in subjectAltName]

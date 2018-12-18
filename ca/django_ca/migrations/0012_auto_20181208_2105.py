@@ -20,27 +20,26 @@ def migrate_data(apps, schema_editor):
         prefix = ca_settings.CA_DIR
 
     # Move keys from CAs
-    for ca in CertificateAuthority.objects.all():
-        if len(ca.private_key_path.name) > 0:
-            # Previous versions stored absolute paths
-            key_path = ca.private_key_path.name
-            # Get new path using storage
-            base_name = os.path.join(prefix, os.path.basename(ca.private_key_path.name))
-            # Update the key path with the new location
-            ca.private_key_path = base_name
-            # Store
-            ca.save()
+    for ca in CertificateAuthority.objects.exclude(name=''):
+        # Previous versions stored absolute paths
+        key_path = ca.private_key_path.name
+        # Get new path using storage
+        base_name = os.path.join(prefix, os.path.basename(ca.private_key_path.name))
+        # Update the key path with the new location
+        ca.private_key_path = base_name
+        # Store
+        ca.save()
 
-            # Check if the key is at same location or not
-            if not default_storage.exists(base_name):
-                # Key is not at the same location. Make a copy to the storage
-                # Read the key
-                with open(key_path, 'rb') as stream:
-                    key_pem = stream.read()
-                write_private_file(base_name, key_pem)
-                # Uncomment to Remove old files
-                #os.chmod(key_path, stat.S_IWRITE)
-                #os.remove(key_path)
+        # Check if the key is at same location or not
+        if not default_storage.exists(base_name):
+            # Key is not at the same location. Make a copy to the storage
+            # Read the key
+            with open(key_path, 'rb') as stream:
+                key_pem = stream.read()
+            write_private_file(base_name, key_pem)
+            # Uncomment to Remove old files
+            #os.chmod(key_path, stat.S_IWRITE)
+            #os.remove(key_path)
 
 
 class Migration(migrations.Migration):
