@@ -20,6 +20,10 @@ def copy_files(apps, schema_editor):
         ca.private_key.save(name, ContentFile(raw_key))
 
 
+def remove_files(apps, schema_editor):
+    pass
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -27,5 +31,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(copy_files),
+        migrations.RunPython(copy_files, remove_files),
     ]
