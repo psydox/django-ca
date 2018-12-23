@@ -13,7 +13,6 @@
 # You should have received a copy of the GNU General Public License along with django-ca.  If not,
 # see <http://www.gnu.org/licenses/>.
 
-
 from django import forms
 
 from . import ca_settings
@@ -22,6 +21,7 @@ from .utils import SUBJECT_FIELDS
 from .widgets import MultiValueExtensionWidget
 from .widgets import SubjectAltNameWidget
 from .widgets import SubjectWidget
+from .widgets import ListWidget
 
 
 class SubjectField(forms.MultiValueField):
@@ -89,3 +89,27 @@ class MultiValueExtensionField(forms.MultiValueField):
             'critical': values[1],
             'value': values[0],
         })
+
+
+class ListField(forms.Field):
+    widget = ListWidget
+
+    def __init__(self, field, widget=None, **kwargs):
+        self.field = field
+
+        # instantiate a widget
+        widget = widget or self.widget
+        if isinstance(widget, type):
+            widget = widget(field.widget)
+
+        kwargs['widget'] = widget
+
+        super(ListField, self).__init__(**kwargs)
+
+    def has_changed(self, initial, data):
+        if self.disabled:
+            return False
+        return initial != data
+
+    def clean(self, value):
+        return value

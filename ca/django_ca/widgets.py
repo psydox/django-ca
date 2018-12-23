@@ -187,3 +187,49 @@ class MultiValueExtensionWidget(CustomMultiWidget):
         if value:
             return value.value, value.critical
         return ([], False)
+
+
+class ListWidget(widgets.Widget):
+    template_name = 'django_ca/forms/widgets/listwidget.html'
+
+    def __init__(self, widget, extra=3, attrs=None):
+        self.listed_widget = widget
+        self.extra = extra
+        super(ListWidget, self).__init__(attrs)
+
+    def _total_key(self, name):
+        return '%s_total' % name
+
+    def get_context(self, name, value, attrs):
+        context = super(ListWidget, self).get_context(name, value, attrs)
+
+        count = len(value) if value else self.extra
+        context['total'] = widgets.HiddenInput().get_context(
+            self._total_key(name), count, None)['widget']
+
+        list_widgets = []
+        for i in range(0, count):
+            val = value[i] if value else None
+            list_widgets.append(self.listed_widget.get_context('%s_%s' % (name, i), val, None)['widget'])
+
+        context['listed'] = list_widgets
+
+        return context
+
+    def value_from_datadict(self, data, files, name):
+        total = int(data[self._total_key(name)])
+
+        value = []
+        for i in range(0, total):
+            value.append(self.listed_widget.value_from_datadict(data, files, '%s_%s' % (name, i)))
+        return value
+
+    def _get_media(self):
+        """
+        Media for a multiwidget is the combination of all media of the
+        subwidgets.
+        """
+        media = widgets.Media()
+        media = media + self.listed_widget.media
+        return media
+    media = property(_get_media)
