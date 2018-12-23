@@ -1,0 +1,8 @@
+{# total counter: #}
+{% with widget=total %}
+  {% include widget.template_name %}
+{% endwith %}
+
+{% for widget in listed %}
+  {% include widget.template_name %}
+{% endfor %}

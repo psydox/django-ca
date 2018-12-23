@@ -13,11 +13,15 @@
 # You should have received a copy of the GNU General Public License along with django-ca.  If not,
 # see <http://www.gnu.org/licenses/>.
 
+import importlib
+
 from django import forms
 
 from . import ca_settings
 from .subject import Subject
+from .utils import GENERAL_NAME_CHOICES
 from .utils import SUBJECT_FIELDS
+from .widgets import GeneralNameWidget
 from .widgets import MultiValueExtensionWidget
 from .widgets import SubjectAltNameWidget
 from .widgets import SubjectWidget
@@ -89,6 +93,24 @@ class MultiValueExtensionField(forms.MultiValueField):
             'critical': values[1],
             'value': values[0],
         })
+
+
+class GeneralNameField(forms.MultiValueField):
+    def __init__(self, **kwargs):
+        fields = (
+            forms.ChoiceField(choices=GENERAL_NAME_CHOICES),
+            forms.CharField(),
+        )
+        widget = GeneralNameWidget(choices=GENERAL_NAME_CHOICES)
+        super(GeneralNameField, self).__init__(fields=fields, widget=widget, **kwargs)
+
+    def compress(self, values):
+        if values:
+            mod, name = values[0].rsplit('.', 1)
+            mod = importlib.import_module(mod)
+            cls = getattr(mod, name)
+            return cls(values[1])
+        return ('cryptography.x509.general_name.UniformResourceIdentifier', '')
 
 
 class ListField(forms.Field):

@@ -189,6 +189,19 @@ class MultiValueExtensionWidget(CustomMultiWidget):
         return ([], False)
 
 
+class GeneralNameWidget(CustomMultiWidget):
+    def __init__(self, choices, attrs=None):
+        _widgets = (
+            widgets.Select(choices=choices, attrs=attrs),
+            widgets.TextInput(),
+        )
+        super(GeneralNameWidget, self).__init__(_widgets, attrs)
+
+    def decompress(self, value):
+        typ = '%s.%s' % (value.__module__, value.__name__)
+        return typ, value.vaue
+
+
 class ListWidget(widgets.Widget):
     template_name = 'django_ca/forms/widgets/listwidget.html'
 

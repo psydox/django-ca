@@ -60,6 +60,16 @@ NAME_RE = re.compile(r'(?:/+|\A)\s*(?P<field>[^\s]*?)\s*'
 GENERAL_NAME_RE = re.compile('^(email|URI|IP|DNS|RID|dirName|otherName):(.*)', flags=re.I)
 _datetime_format = '%Y%m%d%H%M%SZ'
 
+GENERAL_NAME_CHOICES = (
+    ('cryptography.x509.general_name.RFC822Name', 'E-Mail'),
+    ('cryptography.x509.general_name.DNSName', 'DNS'),
+    ('cryptography.x509.general_name.UniformResourceIdentifier', 'URI'),
+    ('cryptography.x509.general_name.IPAddress', 'IP'),
+    ('cryptography.x509.name.RelativeDistinguishedName', 'Registered ID'),
+    ('cryptography.x509.general_name.DirectoryName', 'DirectoryName'),
+    ('cryptography.x509.general_name.OtherName', 'OtherName'),
+)
+
 SAN_NAME_MAPPINGS = {
     x509.DNSName: 'DNS',
     x509.RFC822Name: 'email',
