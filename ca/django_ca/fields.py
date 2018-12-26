@@ -15,6 +15,8 @@
 
 import importlib
 
+from cryptography import x509
+
 from django import forms
 
 from . import ca_settings
@@ -97,6 +99,8 @@ class MultiValueExtensionField(forms.MultiValueField):
 
 class GeneralNameField(forms.MultiValueField):
     def __init__(self, **kwargs):
+        kwargs.setdefault('initial', x509.UniformResourceIdentifier(''))
+
         fields = (
             forms.ChoiceField(choices=GENERAL_NAME_CHOICES),
             forms.CharField(),
@@ -110,7 +114,7 @@ class GeneralNameField(forms.MultiValueField):
             mod = importlib.import_module(mod)
             cls = getattr(mod, name)
             return cls(values[1])
-        return ('cryptography.x509.general_name.UniformResourceIdentifier', '')
+        return self.initial
 
 
 class ListField(forms.Field):
@@ -121,6 +125,9 @@ class ListField(forms.Field):
 
         # instantiate a widget
         widget = widget or self.widget
+
+        if isinstance(field, type):
+            field = field()
         if isinstance(widget, type):
             widget = widget(field.widget)
 

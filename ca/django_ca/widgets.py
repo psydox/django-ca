@@ -198,8 +198,10 @@ class GeneralNameWidget(CustomMultiWidget):
         super(GeneralNameWidget, self).__init__(_widgets, attrs)
 
     def decompress(self, value):
-        typ = '%s.%s' % (value.__module__, value.__name__)
-        return typ, value.vaue
+        if value is None:
+            return ('cryptography.x509.general_name.UniformResourceIdentifier', '')
+        typ = '%s.%s' % (value.__module__, value.__class__.__name__)
+        return typ, value.value
 
 
 class ListWidget(widgets.Widget):
@@ -208,7 +210,7 @@ class ListWidget(widgets.Widget):
     def __init__(self, widget, extra=3, attrs=None):
         self.listed_widget = widget
         self.extra = extra
-        super(ListWidget, self).__init__(attrs)
+        super(ListWidget, self).__init__(attrs=attrs)
 
     def _total_key(self, name):
         return '%s_total' % name
@@ -223,7 +225,7 @@ class ListWidget(widgets.Widget):
         list_widgets = []
         for i in range(0, count):
             val = value[i] if value else None
-            list_widgets.append(self.listed_widget.get_context('%s_%s' % (name, i), val, None)['widget'])
+            list_widgets.append(self.listed_widget.get_context(name='%s_%s' % (name, i), value=val, attrs=None)['widget'])
 
         context['listed'] = list_widgets
 
